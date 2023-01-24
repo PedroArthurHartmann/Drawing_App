@@ -57,6 +57,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<ImageButton>(R.id.ib_gallery).setOnClickListener {
             requestStoragePermission()
         }
+        findViewById<ImageButton>(R.id.ib_undo).setOnClickListener {
+            drawingView.undo()
+        }
 
         mImageButtonCurrentPaint =
             findViewById<LinearLayout>(R.id.ll_paint_colors)[0] as ImageButton
