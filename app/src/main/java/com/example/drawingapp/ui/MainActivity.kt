@@ -3,21 +3,35 @@ package com.example.drawingapp.ui
 import android.Manifest
 import android.app.Dialog
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
 import android.media.Image
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.provider.MediaStore
 import android.view.View
+import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.PackageManagerCompat
 import androidx.core.view.get
+import androidx.lifecycle.lifecycleScope
 import com.example.drawingapp.R
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 
 class MainActivity : AppCompatActivity() {
 
@@ -26,20 +40,18 @@ class MainActivity : AppCompatActivity() {
     private val openGalleryLauncher: ActivityResultLauncher<Intent> =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
 
-            if (it.resultCode == RESULT_OK && it.data != null)
-                findViewById<ImageView>(R.id.iv_background).setImageURI(it.data?.data)
+            if (it.resultCode == RESULT_OK && it.data != null) findViewById<ImageView>(R.id.iv_background).setImageURI(
+                it.data?.data
+            )
         }
 
     private val mGalleryAccess: ActivityResultLauncher<Array<String>> =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
             permissions.entries.forEach {
-                val isGranted = it.value
-
-                if (isGranted) {
+                if (it.value) { //if the permission is granted
                     openGalleryLauncher.launch(
                         Intent(
-                            Intent.ACTION_PICK,
-                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                            Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI
                         )
                     )
                 }
@@ -60,6 +72,13 @@ class MainActivity : AppCompatActivity() {
         findViewById<ImageButton>(R.id.ib_undo).setOnClickListener {
             drawingView.undo()
         }
+        findViewById<ImageButton>(R.id.ib_save).setOnClickListener {
+            lifecycleScope.launch {
+                val flDrawingView:FrameLayout = findViewById(R.id.fl_drawing_view_container)
+                val bitmap = getBitmapFrom(flDrawingView)
+                saveBitmapFile(bitmap)
+            }
+        }
 
         mImageButtonCurrentPaint =
             findViewById<LinearLayout>(R.id.ll_paint_colors)[0] as ImageButton
@@ -68,13 +87,64 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun getBitmapFrom(view: View): Bitmap {
+        val returnedBitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(returnedBitmap)
+
+        if (view.background != null) view.background.draw(canvas)
+        else canvas.drawColor(Color.WHITE)
+
+        view.draw(canvas)
+
+        return returnedBitmap
+    }
+
+    private suspend fun saveBitmapFile(bitmap: Bitmap) {
+        try {
+            var filePath: String?
+
+
+            withContext(Dispatchers.IO) {
+                val bytes = ByteArrayOutputStream()
+
+                bitmap.compress(Bitmap.CompressFormat.PNG, 90, bytes)
+
+                filePath =
+                    externalCacheDir?.absolutePath.toString() + File.separator + "DrawingApp" + System.currentTimeMillis() / 1000 + ".jpg"
+
+                val fileOutput = FileOutputStream(filePath)
+
+                fileOutput.write(bytes.toByteArray())
+                fileOutput.close()
+            }
+
+            runOnUiThread {
+                Toast.makeText(this, "File saved successfully on $filePath", Toast.LENGTH_SHORT)
+                    .show()
+            }
+        } catch (e: java.lang.Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun isReadStorageAllowed(): Boolean {
+        val result =
+            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
+
+        return result == PackageManager.PERMISSION_GRANTED
+    }
+
     private fun requestStoragePermission() {
         if (!ActivityCompat.shouldShowRequestPermissionRationale(
-                this,
-                Manifest.permission.READ_EXTERNAL_STORAGE
+                this, Manifest.permission.READ_EXTERNAL_STORAGE
             )
         ) {
-            mGalleryAccess.launch(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE))
+            mGalleryAccess.launch(
+                arrayOf(
+                    Manifest.permission.READ_EXTERNAL_STORAGE,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                )
+            )
         }
     }
 
@@ -104,15 +174,13 @@ class MainActivity : AppCompatActivity() {
 
             imageButton.setImageDrawable(
                 ContextCompat.getDrawable(
-                    this,
-                    R.drawable.pallet_pressed
+                    this, R.drawable.pallet_pressed
                 )
             )
 
             mImageButtonCurrentPaint.setImageDrawable(
                 ContextCompat.getDrawable(
-                    this,
-                    R.drawable.pallet_normal
+                    this, R.drawable.pallet_normal
                 )
             )
 
